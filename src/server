@@ -1,0 +1,28 @@
+#!/usr/bin/python
+
+import socket
+import struct
+import select
+
+
+PORT_FILE = 'port'
+
+
+def start_server():
+    main_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    main_socket.bind(('', 0))
+    print("main_socket port: {0}".format(main_socket.getsockname()[1]))
+    with open(PORT_FILE, 'w') as f:
+        f.write("{0}\n".format(main_socket.getsockname()[1]))
+
+    while True:
+        # print('blocking while waiting for incoming clients')
+        # clients, _, _ =  select.select([main_socket, [], []])
+        main_socket.listen(1)
+        conn, addr = main_socket.accept()
+        ctrl_info = conn.recv(9)
+        print("ctrl_info: {0}, size: {1}".format(ctrl_info, len(ctrl_info)))
+
+
+
+start_server()
