@@ -1,28 +1,112 @@
 #!/usr/bin/python
 
 import socket
-import struct
 import select
+import sys
 
 
 PORT_FILE = 'port'
+CTRL_INFO_SIZE = 9
+READ_SIZE = 1024
 
 
 def start_server():
     main_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     main_socket.bind(('', 0))
-    print("main_socket port: {0}".format(main_socket.getsockname()[1]))
+    main_socket.setblocking(0)
+    print(main_socket.getsockname())
     with open(PORT_FILE, 'w') as f:
         f.write("{0}\n".format(main_socket.getsockname()[1]))
 
+    pairClient_lst = []
+    socket_to_pair = {}
+    uploaders_lst = [main_socket]
+    terminate_requested = False
+
+    def handle_init_requests(client_socket, ctrl_info):
+        key = ctrl_info[1:]
+        if ctrl_info[0] == 'F':
+            # terminate
+            for s in socket_to_pair:
+                pairClient = socket_to_pair.get(s)
+                if pairClient is not None or not pairClient.is_matched:
+                    if pairClient.uploader_socket is not None:
+                        uploaders_lst.remove(pairClient.uploader_socket)
+                    socket_to_pair.pop(s)
+
+            global terminate_requested
+            terminate_requested = True
+
+        elif ctrl_info[0] == 'G':
+            # downloaders come before uploaders
+            pairClient_lst.append(PairClients(key, client_socket))
+
+        elif ctrl_info[0] == 'P':
+            # upload
+            for p in pairClient_lst:
+                if p.is_match(key, client_socket):
+                    uploaders_lst.append(p.uploader_socket)
+                    socket_to_pair[p.uploader_socket] = p
+                    break
+
     while True:
-        # print('blocking while waiting for incoming clients')
-        # clients, _, _ =  select.select([main_socket, [], []])
-        main_socket.listen(1)
-        conn, addr = main_socket.accept()
-        ctrl_info = conn.recv(9)
-        print("ctrl_info: {0}, size: {1}".format(ctrl_info, len(ctrl_info)))
+        try:
+            print 'blocking'
+            main_socket.listen(10000)
+            uploaders, _, _ = select.select(uploaders_lst, [], [])
+            print 'size U: ', len(uploaders)
+            print 'size lst: ', len(uploaders_lst)
+            print 'size p_list: ', len(pairClient_lst)
+            for uploader in uploaders:
+                if uploader == main_socket and not terminate_requested:
+                    print 'main'
+                    conn, _ = main_socket.accept()
+                    ctrl_info = conn.recv(CTRL_INFO_SIZE)
+                    print(ctrl_info)
+                    conn.setblocking(0)
+                    handle_init_requests(conn, ctrl_info)
+                else:
+                    print 'client'
+                    packet = uploader.recv(READ_SIZE)
+                    pairClient = socket_to_pair.get(uploader)
+                    if packet == "":
+                        uploaders_lst.remove(uploader)
+                        pairClient_lst.remove(pairClient)
+                        pairClient.upload_complete()
+                    elif pairClient is not None and pairClient.is_matched:
+                        pairClient.upload(packet)
+
+            if len(uploaders_lst) == 1 and terminate_requested:
+                sys.exit()  # exit when terminate requested and only main socket left
+
+        except select.error:
+            pass
 
 
+class PairClients:
+    def __init__(self, key, downloader_socket):
+        self.key = key
+        # self.downloader_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # self.downloader_socket.connect(addr)
+        self.downloader_socket = downloader_socket
+        self.uploader_socket = None
+        self.is_matched = False
+
+    def is_match(self, key, uploader_socket):
+        if key == self.key:
+            # self.uploader_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # self.uploader_socket.connect(addr)
+            self.uploader_socket = uploader_socket
+            self.is_matched = True
+            return True
+
+        return False
+
+    def upload(self, packet):
+        self.downloader_socket.send(packet)
+
+    def upload_complete(self):
+        self.uploader_socket.close()
+        self.downloader_socket.close()
 
 start_server()

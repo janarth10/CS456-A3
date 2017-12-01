@@ -2,13 +2,75 @@
 
 import sys
 import socket
+import time
+import select
 
 
 def terminate(host, port, ctrl_info):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
-    s.send(ctrl_info + '\0\0\0\0\0\0\0\0')
+    s.send(pad_to_size_9(ctrl_info))
     s.close()
+
+
+def upload(host, port, ctrl_info, file_name, send_size, wait_time):
+    # send command
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.connect((host, port))
+    server_socket.send(pad_to_size_9(ctrl_info))
+
+    file_to_upload = open(file_name, 'rb')
+    while True:
+        packet = file_to_upload.read(send_size)
+
+        if packet == "":
+            file_to_upload.close()
+            break
+
+        # print('s')
+        # print(packet)
+        # print('e')
+
+        try:
+            _, _, _ = select.select([], [server_socket], [])
+            server_socket.send(packet)
+            time.sleep(wait_time / 1000.0)
+        except select.error:
+            pass
+
+    # finished uploading file
+    server_socket.close()
+
+
+def download(host, port, ctrl_info, file_name, recv_size):
+    # send command
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.connect((host, port))
+    server_socket.send(pad_to_size_9(ctrl_info))
+
+    file_to_write = open(file_name, 'wb')
+    while True:
+        try:
+            _, _, _ = select.select([server_socket], [], [])
+            packet = server_socket.recv(recv_size)
+        except select.error:
+            pass
+
+        if packet == "":
+            file_to_write.close()
+            break
+        else:
+            file_to_write.write(packet)
+
+    # finished downloading file
+    server_socket.close()
+
+
+def pad_to_size_9(message):
+    while len(message) < 9:
+        message += '\0'
+
+    return message
 
 
 
@@ -22,6 +84,9 @@ if len(sys.argv) >= 6:
 
     if len(sys.argv) == 7:
         wait_time = int(sys.argv[6])
+        upload(host, port, ctrl_info, file_name, buffer_size, wait_time)
+        sys.exit()
 
+    download(host, port, ctrl_info, file_name, buffer_size)
 else:
     terminate(host, port, ctrl_info)

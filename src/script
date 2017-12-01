@@ -1,0 +1,9 @@
+#!/usr/bin/python
+
+d = {}
+d['dave'] = 'tom'
+d['jimmicks'] = 'sally'
+
+for k in d:
+    print k
+    print d[k]
