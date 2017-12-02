@@ -10,4 +10,4 @@ How it works:
     Then finish requests that have already been matched
 
 - built using python3
-- tested on student servers
+- tested on student server(ubuntu1604-002)
