@@ -1,0 +1,13 @@
+cS456 A3
+Janarth Punniyamoorthy 20571475
+
+-all portions of the assignment have been completed
+
+How it works:
+  - Server uses select() statement to concurrently handle multiple clients
+  - keep track of download requests in list, and which connections have been matched
+    When the terminate request is received, throw away all requests in list that are unmatched
+    Then finish requests that have already been matched
+
+- built using python3
+- tested on student servers
