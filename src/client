@@ -27,10 +27,6 @@ def upload(host, port, ctrl_info, file_name, send_size, wait_time):
             file_to_upload.close()
             break
 
-        # print('s')
-        # print(packet)
-        # print('e')
-
         try:
             _, _, _ = select.select([], [server_socket], [])
             server_socket.send(packet)
@@ -48,7 +44,7 @@ def download(host, port, ctrl_info, file_name, recv_size):
     server_socket.connect((host, port))
     server_socket.send(pad_to_size_9(ctrl_info))
 
-    file_to_write = open(file_name, 'wb')
+    file_to_write = None
     while True:
         try:
             _, _, _ = select.select([server_socket], [], [])
@@ -60,6 +56,8 @@ def download(host, port, ctrl_info, file_name, recv_size):
             file_to_write.close()
             break
         else:
+            if file_to_write is None:
+                file_to_write = open(file_name, 'wb')
             file_to_write.write(packet)
 
     # finished downloading file
@@ -71,7 +69,6 @@ def pad_to_size_9(message):
         message += '\0'
 
     return message
-
 
 
 host = sys.argv[1]

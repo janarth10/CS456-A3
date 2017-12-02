@@ -8,34 +8,33 @@ import sys
 PORT_FILE = 'port'
 CTRL_INFO_SIZE = 9
 READ_SIZE = 1024
+TERMINATE_REQUESTED = False
 
 
 def start_server():
     main_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     main_socket.bind(('', 0))
     main_socket.setblocking(0)
-    print(main_socket.getsockname())
+    print(main_socket.getsockname()[1])
     with open(PORT_FILE, 'w') as f:
         f.write("{0}\n".format(main_socket.getsockname()[1]))
 
     pairClient_lst = []
     socket_to_pair = {}
     uploaders_lst = [main_socket]
-    terminate_requested = False
 
     def handle_init_requests(client_socket, ctrl_info):
         key = ctrl_info[1:]
         if ctrl_info[0] == 'F':
             # terminate
-            for s in socket_to_pair:
-                pairClient = socket_to_pair.get(s)
-                if pairClient is not None or not pairClient.is_matched:
-                    if pairClient.uploader_socket is not None:
-                        uploaders_lst.remove(pairClient.uploader_socket)
-                    socket_to_pair.pop(s)
+            for u_sock in uploaders_lst:
+                pairClient = socket_to_pair.get(u_sock)
+                if pairClient is not None and not pairClient.is_matched:
+                    uploaders_lst.remove(u_sock)
+                    pairClient_lst.remove(pairClient)
 
-            global terminate_requested
-            terminate_requested = True
+            global TERMINATE_REQUESTED
+            TERMINATE_REQUESTED = True
 
         elif ctrl_info[0] == 'G':
             # downloaders come before uploaders
@@ -51,22 +50,15 @@ def start_server():
 
     while True:
         try:
-            print 'blocking'
             main_socket.listen(10000)
             uploaders, _, _ = select.select(uploaders_lst, [], [])
-            print 'size U: ', len(uploaders)
-            print 'size lst: ', len(uploaders_lst)
-            print 'size p_list: ', len(pairClient_lst)
             for uploader in uploaders:
-                if uploader == main_socket and not terminate_requested:
-                    print 'main'
+                if uploader == main_socket and not TERMINATE_REQUESTED:
                     conn, _ = main_socket.accept()
                     ctrl_info = conn.recv(CTRL_INFO_SIZE)
-                    print(ctrl_info)
                     conn.setblocking(0)
                     handle_init_requests(conn, ctrl_info)
                 else:
-                    print 'client'
                     packet = uploader.recv(READ_SIZE)
                     pairClient = socket_to_pair.get(uploader)
                     if packet == "":
@@ -76,7 +68,7 @@ def start_server():
                     elif pairClient is not None and pairClient.is_matched:
                         pairClient.upload(packet)
 
-            if len(uploaders_lst) == 1 and terminate_requested:
+            if len(uploaders_lst) == 1 and TERMINATE_REQUESTED:
                 sys.exit()  # exit when terminate requested and only main socket left
 
         except select.error:
@@ -86,16 +78,12 @@ def start_server():
 class PairClients:
     def __init__(self, key, downloader_socket):
         self.key = key
-        # self.downloader_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.downloader_socket.connect(addr)
         self.downloader_socket = downloader_socket
         self.uploader_socket = None
         self.is_matched = False
 
     def is_match(self, key, uploader_socket):
         if key == self.key:
-            # self.uploader_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # self.uploader_socket.connect(addr)
             self.uploader_socket = uploader_socket
             self.is_matched = True
             return True
@@ -108,5 +96,6 @@ class PairClients:
     def upload_complete(self):
         self.uploader_socket.close()
         self.downloader_socket.close()
+
 
 start_server()
